@@ -154,8 +154,16 @@
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   * {
     border-color: var(--color-border);
+  }
+
+  [id^="chapter-"] {
+    scroll-margin-top: 8rem;
   }
 
   body {
