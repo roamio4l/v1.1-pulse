@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion, useScroll, useTransform } from "motion/react";
 import { Container, Display, Eyebrow, Reveal, Section } from "../primitives";
 
@@ -65,6 +65,33 @@ export default function Walkthrough() {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const progress = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
+  const [activeChapter, setActiveChapter] = useState<string>(CHAPTERS[0].n);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const chapter = entry.target.getAttribute("data-chapter");
+            if (chapter) setActiveChapter(chapter);
+          }
+        });
+      },
+      { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+    );
+    const items = document.querySelectorAll("[data-chapter]");
+    items.forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
+
+  const handleChapterClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    e.preventDefault();
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    history.replaceState(null, "", `#${id}`);
+  };
 
   return (
     <Section id="walkthrough" className="border-t border-line/60">
@@ -85,10 +112,59 @@ export default function Walkthrough() {
         </div>
       </Container>
 
+      <Container className="mb-8 md:hidden">
+        <nav className="flex gap-2 overflow-x-auto pb-2">
+          {CHAPTERS.map((c) => (
+            <a
+              key={c.n}
+              href={`#chapter-${c.n}`}
+              onClick={(e) => handleChapterClick(e, `chapter-${c.n}`)}
+              className={`shrink-0 rounded-full border border-line px-3 py-1.5 text-[11px] transition ${
+                activeChapter === c.n ? "bg-navy text-canvas" : "bg-canvas text-ink hover:bg-secondary"
+              }`}
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {c.n} · {c.title}
+            </a>
+          ))}
+        </nav>
+      </Container>
+
       <div ref={ref} className="relative">
-        {/* Progress rail */}
-        <div className="pointer-events-none absolute left-6 top-0 hidden h-full w-px bg-line md:left-[calc((100vw-1240px)/2+2.5rem)] md:block xl:left-[calc((100vw-1240px)/2+2.5rem)]">
-          <motion.div style={{ height: progress }} className="w-px bg-navy" />
+        {/* Desktop sticky chapter rail */}
+        <div className="absolute left-6 top-0 hidden h-full md:left-[calc((100vw-1240px)/2+2.5rem)] md:block xl:left-[calc((100vw-1240px)/2+2.5rem)]">
+          <div className="sticky top-32 flex h-[calc(100vh-10rem)] flex-row">
+            <div className="relative h-full w-px bg-line">
+              <motion.div style={{ height: progress }} className="w-px bg-navy" />
+            </div>
+            <nav className="ml-3 flex h-full flex-col justify-between py-2">
+              {CHAPTERS.map((c) => (
+                <a
+                  key={c.n}
+                  href={`#chapter-${c.n}`}
+                  onClick={(e) => handleChapterClick(e, `chapter-${c.n}`)}
+                  className="group relative flex items-center"
+                >
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-full border text-[9px] transition ${
+                      activeChapter === c.n
+                        ? "border-navy bg-navy text-canvas"
+                        : "border-line bg-canvas text-graphite hover:border-navy hover:text-ink"
+                    }`}
+                    style={{ fontFamily: "var(--font-mono)" }}
+                  >
+                    {c.n}
+                  </span>
+                  <span
+                    className="absolute left-8 whitespace-nowrap rounded-md border border-line bg-canvas px-2 py-1 text-[11px] text-ink opacity-0 shadow-sm transition group-hover:opacity-100"
+                    style={{ fontFamily: "var(--font-mono)" }}
+                  >
+                    {c.title}
+                  </span>
+                </a>
+              ))}
+            </nav>
+          </div>
         </div>
 
         <Container>
@@ -105,7 +181,7 @@ export default function Walkthrough() {
 
 function Chapter({ c, i }: { c: (typeof CHAPTERS)[number]; i: number }) {
   return (
-    <li className="grid gap-10 md:grid-cols-12">
+    <li id={`chapter-${c.n}`} data-chapter={c.n} className="grid scroll-mt-32 gap-10 md:grid-cols-12">
       <div className="md:col-span-5">
         <div className="sticky top-32">
           <Reveal>
@@ -115,7 +191,7 @@ function Chapter({ c, i }: { c: (typeof CHAPTERS)[number]; i: number }) {
                 Chapter
               </span>
             </div>
-            <h3 className="mt-4 font-display text-4xl md:text-5xl leading-tight">{c.title}</h3>
+            <h3 className="mt-4 font-display text-4xl leading-tight md:text-5xl">{c.title}</h3>
             <p className="mt-4 max-w-[38ch] text-base leading-relaxed text-graphite">{c.body}</p>
           </Reveal>
         </div>
