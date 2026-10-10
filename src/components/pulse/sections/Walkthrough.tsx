@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { motion, useScroll, useTransform } from "motion/react";
+import { motion, useScroll, useTransform, useReducedMotion } from "motion/react";
 import { Container, Display, Eyebrow, Reveal, Section } from "../primitives";
 
 const CHAPTERS = [
@@ -66,31 +66,77 @@ export default function Walkthrough() {
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const progress = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
   const [activeChapter, setActiveChapter] = useState<string>(CHAPTERS[0].n);
+  const stripRef = useRef<HTMLElement>(null);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const chapter = entry.target.getAttribute("data-chapter");
-            if (chapter) setActiveChapter(chapter);
-          }
-        });
-      },
-      { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
-    );
-    const items = document.querySelectorAll("[data-chapter]");
+    const items = Array.from(ref.current?.querySelectorAll<HTMLElement>("[data-chapter]") ?? []);
+    let frame = 0;
+    let initialFrame = 0;
+    const updateActive = () => {
+      frame = 0;
+      // Measure the stable chapter wrappers, not the animated surfaces inside them.
+      const activationLine = Math.max(144, window.innerHeight * 0.35);
+      let current = items[0];
+      for (const item of items) {
+        if (item.getBoundingClientRect().top <= activationLine) current = item;
+        else break;
+      }
+      const chapter = current?.dataset.chapter;
+      if (chapter) setActiveChapter(chapter);
+    };
+    const scheduleUpdate = () => {
+      if (!frame) frame = requestAnimationFrame(updateActive);
+    };
+    const openHash = () => {
+      const target = items.find((item) => `#${item.id}` === window.location.hash);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "instant", block: "start" });
+      scheduleUpdate();
+    };
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("hashchange", openHash);
+    window.addEventListener("popstate", openHash);
+    const observer = new ResizeObserver(scheduleUpdate);
     items.forEach((item) => observer.observe(item));
-    return () => observer.disconnect();
+    // Run after hydration so direct links work even before reveal animations finish.
+    initialFrame = requestAnimationFrame(() => {
+      openHash();
+      scheduleUpdate();
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(initialFrame);
+      observer.disconnect();
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("hashchange", openHash);
+      window.removeEventListener("popstate", openHash);
+    };
   }, []);
 
+  useEffect(() => {
+    const strip = stripRef.current;
+    const active = strip?.querySelector<HTMLElement>(`[data-nav-chapter="${activeChapter}"]`);
+    if (!strip || !active) return;
+    const left = active.offsetLeft - strip.offsetLeft;
+    const inset = 16;
+    if (left < strip.scrollLeft + inset || left + active.offsetWidth > strip.scrollLeft + strip.clientWidth - inset) {
+      strip.scrollTo({
+        left: left - (strip.clientWidth - active.offsetWidth) / 2,
+        behavior: reducedMotion ? "instant" : "smooth",
+      });
+    }
+  }, [activeChapter, reducedMotion]);
+
   const handleChapterClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     const el = document.getElementById(id);
     if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
-    history.replaceState(null, "", `#${id}`);
+    if (window.location.hash !== `#${id}`) history.pushState(null, "", `#${id}`);
+    el.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
   };
 
   return (
@@ -112,38 +158,42 @@ export default function Walkthrough() {
         </div>
       </Container>
 
-      <Container className="mb-8 md:hidden">
-        <nav className="flex gap-2 overflow-x-auto pb-2">
+      <div ref={ref} className="relative">
+      <div className="sticky top-[68px] z-40 mb-8 border-y border-line bg-canvas/95 backdrop-blur-md md:hidden">
+        <nav ref={stripRef} aria-label="Campaign chapters" className="relative flex gap-2 overflow-x-auto overscroll-x-contain px-6 py-3 motion-safe:scroll-smooth" style={{ scrollbarWidth: "thin" }}>
           {CHAPTERS.map((c) => (
             <a
               key={c.n}
               href={`#chapter-${c.n}`}
+              data-nav-chapter={c.n}
+              aria-current={activeChapter === c.n ? "step" : undefined}
               onClick={(e) => handleChapterClick(e, `chapter-${c.n}`)}
-              className={`shrink-0 rounded-full border border-line px-3 py-1.5 text-[11px] transition ${
-                activeChapter === c.n ? "bg-navy text-canvas" : "bg-canvas text-ink hover:bg-secondary"
+              className={`flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy ${
+                activeChapter === c.n ? "border-navy bg-navy text-canvas" : "border-line bg-canvas text-ink hover:bg-secondary"
               }`}
               style={{ fontFamily: "var(--font-mono)" }}
             >
-              {c.n} · {c.title}
+               <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeChapter === c.n ? "bg-civic" : "bg-line"}`} />
+               {c.n} · {c.title}
             </a>
           ))}
         </nav>
-      </Container>
-
-      <div ref={ref} className="relative">
+      </div>
         {/* Desktop sticky chapter rail */}
-        <div className="absolute left-6 top-0 hidden h-full md:left-[calc((100vw-1240px)/2+2.5rem)] md:block xl:left-[calc((100vw-1240px)/2+2.5rem)]">
+        <div className="absolute left-6 top-0 z-30 hidden h-full md:left-[max(0.5rem,calc((100vw-1240px)/2))] md:block">
           <div className="sticky top-32 flex h-[calc(100vh-10rem)] flex-row">
             <div className="relative h-full w-px bg-line">
               <motion.div style={{ height: progress }} className="w-px bg-navy" />
             </div>
-            <nav className="ml-3 flex h-full flex-col justify-between py-2">
+            <nav aria-label="Campaign chapters" className="ml-3 flex h-full flex-col justify-between py-2">
               {CHAPTERS.map((c) => (
                 <a
                   key={c.n}
                   href={`#chapter-${c.n}`}
+                  aria-label={`${c.n} · ${c.title}`}
+                  aria-current={activeChapter === c.n ? "step" : undefined}
                   onClick={(e) => handleChapterClick(e, `chapter-${c.n}`)}
-                  className="group relative flex items-center"
+                  className="group relative flex items-center focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-navy"
                 >
                   <span
                     className={`flex h-6 w-6 items-center justify-center rounded-full border text-[9px] transition ${
@@ -156,7 +206,7 @@ export default function Walkthrough() {
                     {c.n}
                   </span>
                   <span
-                    className="absolute left-8 whitespace-nowrap rounded-md border border-line bg-canvas px-2 py-1 text-[11px] text-ink opacity-0 shadow-sm transition group-hover:opacity-100"
+                    className="pointer-events-none absolute left-8 whitespace-nowrap rounded-md border border-line bg-canvas px-2 py-1 text-[11px] text-ink opacity-0 shadow-sm transition group-hover:opacity-100 group-focus-visible:opacity-100"
                     style={{ fontFamily: "var(--font-mono)" }}
                   >
                     {c.title}

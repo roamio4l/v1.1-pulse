@@ -1,0 +1,4 @@
+- [x] Keep the mobile chapter strip sticky with horizontal scrolling and visible active feedback.
+- [x] Track active chapters from stable layout positions during rapid scrolling and animations.
+- [x] Support initial chapter hashes and browser history navigation.
+- [ ] Verify chapter navigation and page health.
