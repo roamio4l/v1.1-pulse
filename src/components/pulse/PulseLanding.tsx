@@ -5,6 +5,7 @@ import Hero from "./sections/Hero";
 import Problem from "./sections/Problem";
 import Concept from "./sections/Concept";
 import Walkthrough from "./sections/Walkthrough";
+import Advisor from "./sections/Advisor";
 import MissionControl from "./sections/MissionControl";
 import Ecosystem from "./sections/Ecosystem";
 import Showcases from "./sections/Showcases";
@@ -21,6 +22,7 @@ export default function PulseLanding() {
       <Problem />
       <Concept />
       <Walkthrough />
+      <Advisor />
       <MissionControl />
       <Ecosystem />
       <Showcases />
