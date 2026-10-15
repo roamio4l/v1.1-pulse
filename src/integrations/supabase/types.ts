@@ -14,7 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      workspace_items: {
+        Row: {
+          chapter: string
+          created_at: string
+          details: string
+          done: boolean
+          id: string
+          tag: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          chapter: string
+          created_at?: string
+          details?: string
+          done?: boolean
+          id?: string
+          tag?: string
+          title: string
+          user_id?: string
+        }
+        Update: {
+          chapter?: string
+          created_at?: string
+          details?: string
+          done?: boolean
+          id?: string
+          tag?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
